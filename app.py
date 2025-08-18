@@ -527,22 +527,29 @@ class EnhancedPoseDetector:
     L_KNEE, R_KNEE = 13, 14
     L_ANK, R_ANK = 15, 16
 
-    def __init__(self, pose_weights: str = "yolov8n-pose.pt"):
+    def __init__(self, pose_weights: str = "yolov8n-pose.pt", img_diag: Optional[float] = None):
         # Load Ultralytics YOLOv8-Pose model
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
         self.pose_model = YOLO(pose_weights).to(device)
         # Histories for stability
         self.pose_history = defaultdict(lambda: deque(maxlen=10))
         self.pose_confidence_tracker = defaultdict(lambda: defaultdict(float))
-        # Motion + hysteresis state (track-like smoothing similar to test_action_geometry)
-        self.center_history = defaultdict(lambda: deque(maxlen=12))  # hip center per frame
+        # Motion + hysteresis state (track-like smoothing)
+        self.center_history = defaultdict(lambda: deque(maxlen=12))  # track centers per frame
         self.prev_label = {}
         self.prev_conf = {}
         self.ema_alpha = 0.3
+        # Store image diagonal for consistent threshold scaling
+        self.img_diag = img_diag or 1000.0  # default fallback
 
-    def detect_pose(self, image_crop: np.ndarray, person_id: int) -> str:
+    def detect_pose(self, image_crop: np.ndarray, person_id: int, track_center: Optional[Tuple[float, float]] = None) -> str:
         """Detect posture from YOLOv8-Pose keypoints on the person crop.
         Returns a stabilized label among {'sitting','standing','walking'}.
+        
+        Args:
+            image_crop: Person crop image
+            person_id: Unique person identifier
+            track_center: Optional (cx, cy) center of detection box in full image coordinates
         """
         try:
             if image_crop.size == 0:
@@ -564,27 +571,19 @@ class EnhancedPoseDetector:
             idx = int(np.argmax(conf_means))
             k = kpts_all[idx]
 
-            # Compute crop diag for threshold scaling
-            h, w = image_crop.shape[:2]
-            diag = float(np.hypot(w, h))
-
-            # Motion proxy: hip center speed across frames (crop coordinates)
+            # Motion calculation using track centers
             speed = 0.0
-            hip_ok_l = self._kp_ok(k[self.L_HIP, :2], k[self.L_HIP, 2])
-            hip_ok_r = self._kp_ok(k[self.R_HIP, :2], k[self.R_HIP, 2])
-            if hip_ok_l and hip_ok_r:
-                hip_center = ((k[self.L_HIP, 0] + k[self.R_HIP, 0]) / 2.0,
-                              (k[self.L_HIP, 1] + k[self.R_HIP, 1]) / 2.0)
+            if track_center is not None:
                 ch = self.center_history[person_id]
-                ch.append(hip_center)
+                ch.append(track_center)
                 if len(ch) >= 2:
                     dists = [float(np.hypot(ch[j+1][0] - ch[j][0], ch[j+1][1] - ch[j][1])) for j in range(len(ch) - 1)]
                     speed = float(np.mean(dists)) if dists else 0.0
 
             # Classify posture using geometry + motion gating akin to BasicPostureAction
-            pose, confidence, walk_speed, still_speed = self._classify_posture(k, diag, speed)
+            pose, confidence, walk_speed, still_speed = self._classify_posture(k, self.img_diag, speed)
 
-            # Apply hysteresis/EMA similar to test_action_geometry before accumulating
+            # Apply hysteresis/EMA before accumulating
             prev_label = self.prev_label.get(person_id)
             prev_conf = self.prev_conf.get(person_id, confidence)
             if prev_label == pose:
@@ -655,14 +654,15 @@ class EnhancedPoseDetector:
 
     def _hip_height_ratio(self, k: np.ndarray) -> Optional[float]:
         # relative hip height vs shoulder-to-ankle span; larger ratio => hips lower
+        l_ok = self._kp_ok(k[self.L_HIP, :2], k[self.L_HIP, 2]) and self._kp_ok(k[self.L_SH, :2], k[self.L_SH, 2]) and self._kp_ok(k[self.L_ANK, :2], k[self.L_ANK, 2])
+        r_ok = self._kp_ok(k[self.R_HIP, :2], k[self.R_HIP, 2]) and self._kp_ok(k[self.R_SH, :2], k[self.R_SH, 2]) and self._kp_ok(k[self.R_ANK, :2], k[self.R_ANK, 2])
         vals = []
-        for sh, hip, ank in [(self.L_SH, self.L_HIP, self.L_ANK), (self.R_SH, self.R_HIP, self.R_ANK)]:
-            p_sh, c1 = k[sh, :2], k[sh, 2]
-            p_hip, c2 = k[hip, :2], k[hip, 2]
-            p_ank, c3 = k[ank, :2], k[ank, 2]
-            if self._kp_ok(p_sh, c1) and self._kp_ok(p_hip, c2) and self._kp_ok(p_ank, c3):
-                sh_to_ank = np.linalg.norm(p_sh - p_ank) + 1e-6
-                vals.append((p_hip[1] - p_sh[1]) / sh_to_ank)
+        if l_ok:
+            sh_to_ank = np.linalg.norm(k[self.L_SH, :2] - k[self.L_ANK, :2]) + 1e-6
+            vals.append((k[self.L_HIP, 1] - k[self.L_SH, 1]) / sh_to_ank)
+        if r_ok:
+            sh_to_ank = np.linalg.norm(k[self.R_SH, :2] - k[self.R_ANK, :2]) + 1e-6
+            vals.append((k[self.R_HIP, 1] - k[self.R_SH, 1]) / sh_to_ank)
         if not vals:
             return None
         return float(np.mean(vals))
@@ -672,7 +672,7 @@ class EnhancedPoseDetector:
         - speed is estimated hip-center speed in crop coords per frame.
         - thresholds are scaled by crop diagonal to reduce size dependence.
         """
-        # Motion thresholds (scaled by diag similar to test_action_geometry)
+        # Motion thresholds
         walk_speed = 0.004 * diag
         still_speed = 0.0015 * diag
 
@@ -954,7 +954,7 @@ class EnhancedCCTVProcessor:
                             # Pose detection
                             if self.frame_count % self.pose_detection_interval == 0:
                                 person_crop = frame[y1:y2, x1:x2]
-                                pose = self.pose_detector.detect_pose(person_crop, person_id)
+                                pose = self.pose_detector.detect_pose(person_crop, person_id, ((x1 + x2) / 2, (y1 + y2) / 2))
                                 tracker.current_pose = pose
                                 pose_stats[pose] += 1
                             
