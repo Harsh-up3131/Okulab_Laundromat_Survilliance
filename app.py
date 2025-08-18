@@ -519,108 +519,192 @@ class EnhancedTracker:
             del self.feature_memory[person_id]
 
 class EnhancedPoseDetector:
-    """Enhanced pose detection with better accuracy and stability"""
-    
-    def __init__(self):
-        self.mp_pose = mp.solutions.pose
-        self.pose = self.mp_pose.Pose(
-            static_image_mode=False,
-            model_complexity=1,
-            enable_segmentation=False,
-            min_detection_confidence=0.6,
-            min_tracking_confidence=0.5
-        )
+    """YOLOv8-Pose-backed posture detector with confidence smoothing"""
+
+    # COCO indices
+    L_SH, R_SH = 5, 6
+    L_HIP, R_HIP = 11, 12
+    L_KNEE, R_KNEE = 13, 14
+    L_ANK, R_ANK = 15, 16
+
+    def __init__(self, pose_weights: str = "yolov8n-pose.pt"):
+        # Load Ultralytics YOLOv8-Pose model
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        self.pose_model = YOLO(pose_weights).to(device)
+        # Histories for stability
         self.pose_history = defaultdict(lambda: deque(maxlen=10))
         self.pose_confidence_tracker = defaultdict(lambda: defaultdict(float))
-    
-    def detect_pose(self, image_crop, person_id: int) -> str:
-        """Detect pose with confidence-based stability"""
+        # Motion + hysteresis state (track-like smoothing similar to test_action_geometry)
+        self.center_history = defaultdict(lambda: deque(maxlen=12))  # hip center per frame
+        self.prev_label = {}
+        self.prev_conf = {}
+        self.ema_alpha = 0.3
+
+    def detect_pose(self, image_crop: np.ndarray, person_id: int) -> str:
+        """Detect posture from YOLOv8-Pose keypoints on the person crop.
+        Returns a stabilized label among {'sitting','standing','walking'}.
+        """
         try:
             if image_crop.size == 0:
                 return self._get_most_confident_pose(person_id)
-                
-            rgb_image = cv2.cvtColor(image_crop, cv2.COLOR_BGR2RGB)
-            results = self.pose.process(rgb_image)
-            
-            if results.pose_landmarks:
-                pose, confidence = self._classify_pose_with_confidence(results.pose_landmarks.landmark)
-                
-                # Update pose confidence
-                self.pose_confidence_tracker[person_id][pose] += confidence
-                
-                # Decay old confidences
-                for p in self.pose_confidence_tracker[person_id]:
-                    self.pose_confidence_tracker[person_id][p] *= 0.95
-                
-                # Add to history
-                self.pose_history[person_id].append(pose)
-                
-                # Return most confident pose
+
+            # Inference
+            pres = self.pose_model(image_crop, verbose=False)
+            if not pres:
                 return self._get_most_confident_pose(person_id)
-                    
+            pres = pres[0]
+
+            # Extract keypoints (N,17,3) [x,y,conf]
+            if pres.keypoints is None or len(pres.keypoints) == 0:
+                return self._get_most_confident_pose(person_id)
+            kpts_all = pres.keypoints.data.cpu().numpy().astype(np.float32)
+
+            # Choose the best instance within the crop (highest average keypoint conf)
+            conf_means = np.mean(kpts_all[..., 2], axis=1)
+            idx = int(np.argmax(conf_means))
+            k = kpts_all[idx]
+
+            # Compute crop diag for threshold scaling
+            h, w = image_crop.shape[:2]
+            diag = float(np.hypot(w, h))
+
+            # Motion proxy: hip center speed across frames (crop coordinates)
+            speed = 0.0
+            hip_ok_l = self._kp_ok(k[self.L_HIP, :2], k[self.L_HIP, 2])
+            hip_ok_r = self._kp_ok(k[self.R_HIP, :2], k[self.R_HIP, 2])
+            if hip_ok_l and hip_ok_r:
+                hip_center = ((k[self.L_HIP, 0] + k[self.R_HIP, 0]) / 2.0,
+                              (k[self.L_HIP, 1] + k[self.R_HIP, 1]) / 2.0)
+                ch = self.center_history[person_id]
+                ch.append(hip_center)
+                if len(ch) >= 2:
+                    dists = [float(np.hypot(ch[j+1][0] - ch[j][0], ch[j+1][1] - ch[j][1])) for j in range(len(ch) - 1)]
+                    speed = float(np.mean(dists)) if dists else 0.0
+
+            # Classify posture using geometry + motion gating akin to BasicPostureAction
+            pose, confidence, walk_speed, still_speed = self._classify_posture(k, diag, speed)
+
+            # Apply hysteresis/EMA similar to test_action_geometry before accumulating
+            prev_label = self.prev_label.get(person_id)
+            prev_conf = self.prev_conf.get(person_id, confidence)
+            if prev_label == pose:
+                # EMA strengthen same label
+                confidence = (1.0 - self.ema_alpha) * prev_conf + self.ema_alpha * confidence
+            else:
+                # Require stronger evidence to switch, or walking with speed above gate
+                if confidence < 0.55 and (pose != "walking" or speed < walk_speed):
+                    pose = prev_label if prev_label is not None else pose
+                    confidence = prev_conf
+            self.prev_label[person_id] = pose
+            self.prev_conf[person_id] = confidence
+
+            # Update confidence accumulators with filtered pose
+            self.pose_confidence_tracker[person_id][pose] += float(confidence)
+            # Decay all labels slightly
+            for p in list(self.pose_confidence_tracker[person_id].keys()):
+                self.pose_confidence_tracker[person_id][p] *= 0.95
+
+            # Optional short history
+            self.pose_history[person_id].append(pose)
+
             return self._get_most_confident_pose(person_id)
         except Exception as e:
-            logger.warning(f"Pose detection error: {e}")
+            logger.warning(f"Pose detection error (YOLOv8-Pose): {e}")
             return self._get_most_confident_pose(person_id)
-    
+
     def _get_most_confident_pose(self, person_id: int) -> str:
-        """Get pose with highest confidence, excluding 'unknown'"""
+        """Get pose with highest accumulated confidence, limited to known labels."""
         if person_id not in self.pose_confidence_tracker:
             return "standing"
-            
         confidences = self.pose_confidence_tracker[person_id]
         if not confidences:
             return "standing"
-            
-        # Filter out unknown poses and get the most confident
-        valid_poses = {k: v for k, v in confidences.items() if k in ['sitting', 'standing', 'walking']}
-        if not valid_poses:
+        valid = {k: v for k, v in confidences.items() if k in ["sitting", "standing", "walking"]}
+        if not valid:
             return "standing"
-            
-        return max(valid_poses, key=valid_poses.get)
-    
-    def _classify_pose_with_confidence(self, landmarks) -> Tuple[str, float]:
-        """Enhanced pose classification with confidence score"""
-        try:
-            nose = landmarks[self.mp_pose.PoseLandmark.NOSE]
-            left_hip = landmarks[self.mp_pose.PoseLandmark.LEFT_HIP]
-            right_hip = landmarks[self.mp_pose.PoseLandmark.RIGHT_HIP]
-            left_knee = landmarks[self.mp_pose.PoseLandmark.LEFT_KNEE]
-            right_knee = landmarks[self.mp_pose.PoseLandmark.RIGHT_KNEE]
-            left_ankle = landmarks[self.mp_pose.PoseLandmark.LEFT_ANKLE]
-            right_ankle = landmarks[self.mp_pose.PoseLandmark.RIGHT_ANKLE]
-            
-            # Calculate visibility-based confidence
-            visibility_score = np.mean([
-                nose.visibility, left_hip.visibility, right_hip.visibility,
-                left_knee.visibility, right_knee.visibility,
-                left_ankle.visibility, right_ankle.visibility
-            ])
-            
-            hip_center_y = (left_hip.y + right_hip.y) / 2
-            knee_center_y = (left_knee.y + right_knee.y) / 2
-            ankle_center_y = (left_ankle.y + right_ankle.y) / 2
-            
-            body_height = abs(nose.y - hip_center_y)
-            leg_bend = abs(hip_center_y - knee_center_y)
-            leg_extension = abs(knee_center_y - ankle_center_y)
-            
-            # Enhanced pose classification with confidence
-            if leg_bend < 0.06 * body_height and leg_extension > 0.15 * body_height:
-                return "sitting", visibility_score * 0.8
-            elif leg_bend > 0.2 * body_height or leg_extension < 0.1 * body_height:
-                # Check for walking motion using ankle positions
-                ankle_diff = abs(left_ankle.y - right_ankle.y)
-                if ankle_diff > 0.05:
-                    return "walking", visibility_score * 0.9
-                else:
-                    return "standing", visibility_score * 0.7
+        return max(valid, key=valid.get)
+
+    # ---- Geometry helpers and classifier ----
+    @staticmethod
+    def _angle_deg(a: np.ndarray, b: np.ndarray, c: np.ndarray) -> Optional[float]:
+        if not (np.isfinite(a).all() and np.isfinite(b).all() and np.isfinite(c).all()):
+            return None
+        ba = a - b
+        bc = c - b
+        denom = (np.linalg.norm(ba) * np.linalg.norm(bc)) + 1e-6
+        if denom <= 0:
+            return None
+        cosang = np.clip(np.dot(ba, bc) / denom, -1.0, 1.0)
+        return float(np.degrees(np.arccos(cosang)))
+
+    @staticmethod
+    def _kp_ok(pt: np.ndarray, conf: float, thr: float = 0.2) -> bool:
+        return np.isfinite(pt).all() and float(conf) >= thr
+
+    def _knee_angles(self, k: np.ndarray) -> Tuple[Optional[float], Optional[float]]:
+        out = []
+        for hip, knee, ank in [(self.L_HIP, self.L_KNEE, self.L_ANK), (self.R_HIP, self.R_KNEE, self.R_ANK)]:
+            p_hip, c1 = k[hip, :2], k[hip, 2]
+            p_knee, c2 = k[knee, :2], k[knee, 2]
+            p_ank, c3 = k[ank, :2], k[ank, 2]
+            if self._kp_ok(p_hip, c1) and self._kp_ok(p_knee, c2) and self._kp_ok(p_ank, c3):
+                out.append(self._angle_deg(p_hip, p_knee, p_ank))
             else:
-                return "standing", visibility_score * 0.8
-                
-        except Exception as e:
-            logger.warning(f"Pose classification error: {e}")
-            return "standing", 0.5
+                out.append(None)
+        return out[0], out[1]
+
+    def _hip_height_ratio(self, k: np.ndarray) -> Optional[float]:
+        # relative hip height vs shoulder-to-ankle span; larger ratio => hips lower
+        vals = []
+        for sh, hip, ank in [(self.L_SH, self.L_HIP, self.L_ANK), (self.R_SH, self.R_HIP, self.R_ANK)]:
+            p_sh, c1 = k[sh, :2], k[sh, 2]
+            p_hip, c2 = k[hip, :2], k[hip, 2]
+            p_ank, c3 = k[ank, :2], k[ank, 2]
+            if self._kp_ok(p_sh, c1) and self._kp_ok(p_hip, c2) and self._kp_ok(p_ank, c3):
+                sh_to_ank = np.linalg.norm(p_sh - p_ank) + 1e-6
+                vals.append((p_hip[1] - p_sh[1]) / sh_to_ank)
+        if not vals:
+            return None
+        return float(np.mean(vals))
+
+    def _classify_posture(self, k: np.ndarray, diag: float, speed: float) -> Tuple[str, float, float, float]:
+        """Return (label, confidence, walk_speed_thr, still_speed_thr) akin to BasicPostureAction.
+        - speed is estimated hip-center speed in crop coords per frame.
+        - thresholds are scaled by crop diagonal to reduce size dependence.
+        """
+        # Motion thresholds (scaled by diag similar to test_action_geometry)
+        walk_speed = 0.004 * diag
+        still_speed = 0.0015 * diag
+
+        lh, rh = self._knee_angles(k)
+        knee_straight_mask = [a is not None and a >= 160.0 for a in [lh, rh]]
+        knee_bent_mask = [a is not None and a <= 140.0 for a in [lh, rh]]
+        hip_ratio = self._hip_height_ratio(k)
+
+        # Primary walking by motion speed
+        if speed > walk_speed:
+            conf = min(1.0, (speed - walk_speed) / (0.006 * diag + 1e-6) + 0.5)
+            return "walking", conf, walk_speed, still_speed
+
+        # Sitting: knees bent and hips low
+        if any(knee_bent_mask) and (hip_ratio is None or hip_ratio > 0.45):
+            conf = 0.6
+            if knee_bent_mask.count(True) == 2:
+                conf += 0.2
+            if hip_ratio is not None:
+                conf += min(0.2, (hip_ratio - 0.45))
+            return "sitting", min(conf, 0.99), walk_speed, still_speed
+
+        # Standing if still and knees straight
+        if speed < still_speed and any(knee_straight_mask):
+            conf = 0.6
+            if knee_straight_mask.count(True) == 2:
+                conf += 0.25
+            return "standing", min(conf, 0.95), walk_speed, still_speed
+
+        # Default backoff similar to test script
+        fallback = "standing" if speed < (walk_speed * 0.6) else "walking"
+        return fallback, 0.5, walk_speed, still_speed
 
 class EnhancedCCTVProcessor:
     """Enhanced CCTV processing with all improvements"""
