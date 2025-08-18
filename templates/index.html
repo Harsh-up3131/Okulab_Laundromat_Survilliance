@@ -1,0 +1,775 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CCTV Surveillance Analyzer</title>
+<style>
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+}
+
+.container {
+    background: white;
+    padding: 40px;
+    border-radius: 20px;
+    box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+    max-width: 900px;
+    width: 100%;
+    text-align: center;
+}
+
+h1 {
+    color: #333;
+    margin-bottom: 10px;
+    font-size: 2.5em;
+    background: linear-gradient(45deg, #667eea, #764ba2);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.subtitle {
+    color: #666;
+    margin-bottom: 40px;
+    font-size: 1.1em;
+}
+
+.features {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 20px;
+    margin-bottom: 40px;
+}
+
+.feature {
+    padding: 20px;
+    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+    border-radius: 15px;
+    color: white;
+    font-weight: 500;
+}
+
+.upload-section {
+    margin-bottom: 30px;
+}
+
+.file-upload {
+    position: relative;
+    display: inline-block;
+    cursor: pointer;
+    margin-bottom: 20px;
+}
+
+.file-upload input[type=file] {
+    position: absolute;
+    left: -9999px;
+}
+
+.file-upload-btn {
+    background: linear-gradient(45deg, #667eea, #764ba2);
+    color: white;
+    padding: 15px 30px;
+    border-radius: 50px;
+    border: none;
+    font-size: 16px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+}
+
+.file-upload-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+}
+
+.region-setup {
+    background: #f8f9fa;
+    padding: 20px;
+    border-radius: 15px;
+    margin: 20px 0;
+    text-align: left;
+}
+
+.region-canvas {
+    border: 2px dashed #ddd;
+    border-radius: 10px;
+    cursor: crosshair;
+    width: 100%;
+    max-width: 800px;
+    height: 400px;
+    background: #f5f5f5;
+    display: block;
+    margin: 0 auto;
+}
+
+.region-controls {
+    margin-top: 15px;
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+.btn {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 25px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: all 0.3s ease;
+}
+
+.btn-primary {
+    background: #007bff;
+    color: white;
+}
+
+.btn-secondary {
+    background: #6c757d;
+    color: white;
+}
+
+.btn-success {
+    background: #28a745;
+    color: white;
+}
+
+.btn-danger {
+    background: #dc3545;
+    color: white;
+}
+
+.btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+}
+
+.process-btn {
+    background: linear-gradient(45deg, #28a745, #20c997);
+    color: white;
+    padding: 15px 40px;
+    border: none;
+    border-radius: 50px;
+    font-size: 18px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+}
+
+.process-btn:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+}
+
+.process-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.progress {
+    margin-top: 20px;
+    display: none;
+}
+
+.progress-bar {
+    width: 100%;
+    height: 12px;
+    background: #f0f0f0;
+    border-radius: 6px;
+    overflow: hidden;
+    box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.progress-fill {
+    height: 100%;
+    background: linear-gradient(45deg, #28a745, #20c997);
+    width: 0%;
+    transition: width 0.3s ease;
+    animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.8; }
+}
+
+.status {
+    margin-top: 15px;
+    font-weight: 500;
+    color: #333;
+}
+
+.error {
+    color: #dc3545;
+    background: #f8d7da;
+    padding: 15px;
+    border-radius: 10px;
+    margin-top: 15px;
+    border: 1px solid #f5c6cb;
+}
+
+.success {
+    color: #155724;
+    background: #d4edda;
+    padding: 15px;
+    border-radius: 10px;
+    margin-top: 15px;
+    border: 1px solid #c3e6cb;
+}
+
+.region-info {
+    background: #e3f2fd;
+    padding: 15px;
+    border-radius: 10px;
+    margin-bottom: 15px;
+    border-left: 4px solid #2196f3;
+}
+
+.region-name-input {
+    padding: 8px 12px;
+    border: 2px solid #ddd;
+    border-radius: 20px;
+    margin-left: 10px;
+    outline: none;
+    transition: border-color 0.3s ease;
+}
+
+.region-name-input:focus {
+    border-color: #007bff;
+}
+
+#regionStatus {
+    margin-top: 15px;
+    font-weight: 500;
+    color: #333;
+    text-align: center;
+    background: #fff;
+    padding: 10px;
+    border-radius: 8px;
+    border: 1px solid #e9ecef;
+}
+
+.canvas-container {
+    position: relative;
+    display: inline-block;
+}
+
+@media (max-width: 600px) {
+    .container {
+        padding: 20px;
+    }
+    
+    h1 {
+        font-size: 2em;
+    }
+    
+    .features {
+        grid-template-columns: 1fr;
+    }
+    
+    .region-controls {
+        flex-direction: column;
+        align-items: center;
+    }
+    
+    .region-name-input {
+        margin-left: 0;
+        margin-top: 10px;
+        width: 200px;
+    }
+}
+</style>
+</head>
+<body>
+<div class="container">
+<h1>🎥 CCTV Surveillance Analyzer</h1>
+<p class="subtitle">Advanced person tracking with YOLOv11n + Enhanced Tracking, pose detection, and region analytics</p>
+
+<div class="features">
+    <div class="feature">🎯 YOLOv11n Detection</div>
+    <div class="feature">🔄 Enhanced Tracking</div>
+    <div class="feature">🏃 Stable Pose Recognition</div>
+    <div class="feature">📊 Region Analytics</div>
+</div>
+
+<div class="upload-section">
+    <div class="file-upload">
+        <input type="file" id="videoFile" accept="video/*">
+        <button class="file-upload-btn" onclick="document.getElementById('videoFile').click()">
+            📁 Choose Video File
+        </button>
+    </div>
+    <div id="fileName" style="margin-top: 10px; color: #666;"></div>
+</div>
+
+<div class="region-setup">
+    <div class="region-info">
+        <strong>📍 Region Setup (Optional)</strong><br>
+        Draw counting regions by clicking to create polygon points. Complete each region with right-click or the Complete button.<br>
+        <strong>Features:</strong> Named regions, entry/exit counting, real-time analytics, and comprehensive CSV logging.
+    </div>
+    
+    <div class="canvas-container">
+        <canvas id="regionCanvas" class="region-canvas"></canvas>
+    </div>
+    
+    <div class="region-controls">
+        <button class="btn btn-primary" onclick="startNewRegion()">➕ New Region</button>
+        <button class="btn btn-secondary" onclick="undoLastPoint()">↶ Undo Point</button>
+        <button class="btn btn-success" onclick="completeRegion()">✅ Complete Region</button>
+        <button class="btn btn-danger" onclick="clearRegions()">🗑️ Clear All</button>
+        <input type="text" id="regionName" class="region-name-input" placeholder="Region Name (optional)">
+    </div>
+    
+    <div id="regionStatus"></div>
+</div>
+
+<button class="process-btn" onclick="processVideo()" id="processBtn" disabled>
+    🚀 Process Video
+</button>
+
+<div class="progress" id="progress">
+    <div class="progress-bar">
+        <div class="progress-fill" id="progressFill"></div>
+    </div>
+    <div class="status" id="status">Processing...</div>
+</div>
+
+<div id="error" class="error" style="display: none;"></div>
+<div id="success" class="success" style="display: none;"></div>
+</div>
+
+<script>
+let videoFile = null;
+let regions = [];
+let currentRegion = [];
+let regionNames = [];
+let canvas, ctx;
+let isDrawing = false;
+let currentVideoId = null;
+let frameData = null;
+
+// Initialize canvas
+document.addEventListener('DOMContentLoaded', function() {
+    canvas = document.getElementById('regionCanvas');
+    ctx = canvas.getContext('2d');
+    
+    // Set initial canvas size
+    canvas.width = 800;
+    canvas.height = 400;
+    
+    // Canvas event listeners
+    canvas.addEventListener('click', handleCanvasClick);
+    canvas.addEventListener('contextmenu', function(e) {
+        e.preventDefault();
+        completeRegion();
+    });
+
+    // Initial draw
+    drawCanvas();
+    updateRegionStatus();
+});
+
+// File upload handler
+document.getElementById('videoFile').addEventListener('change', function(e) {
+    videoFile = e.target.files[0];
+    const fileName = document.getElementById('fileName');
+    const processBtn = document.getElementById('processBtn');
+    
+    if (videoFile) {
+        fileName.textContent = `Selected: ${videoFile.name}`;
+        fileName.style.color = '#28a745';
+        processBtn.disabled = false;
+        
+        // Upload file and get first frame for region setup
+        uploadAndGetFirstFrame();
+    } else {
+        fileName.textContent = '';
+        processBtn.disabled = true;
+        clearCanvas();
+    }
+});
+
+async function uploadAndGetFirstFrame() {
+    try {
+        showStatus('Uploading video and extracting first frame...', 'info');
+        
+        // Upload file first
+        const formData = new FormData();
+        formData.append('video', videoFile);
+        
+        const uploadResponse = await fetch('/upload_temp', {
+            method: 'POST',
+            body: formData
+        });
+        
+        if (!uploadResponse.ok) {
+            throw new Error('Upload failed');
+        }
+        
+        const uploadResult = await uploadResponse.json();
+        currentVideoId = uploadResult.video_id;
+        
+        // Get first frame
+        const frameResponse = await fetch(`/get_first_frame/${currentVideoId}`);
+        const frameResult = await frameResponse.json();
+        
+        if (frameResult.success) {
+            frameData = frameResult;
+            loadFirstFrameToCanvas(frameResult);
+            showStatus('Frame loaded! You can now draw regions.', 'success');
+        } else {
+            throw new Error(frameResult.error || 'Could not extract first frame');
+        }
+        
+    } catch (error) {
+        console.error('Error loading first frame:', error);
+        showError('Could not load first frame for region setup: ' + error.message);
+    }
+}
+
+function loadFirstFrameToCanvas(frameResult) {
+    const img = new Image();
+    img.onload = function() {
+        // Set canvas size to match display frame
+        canvas.width = frameResult.width;
+        canvas.height = frameResult.height;
+        
+        // Clear and draw the frame
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        
+        // Redraw regions if any
+        drawRegionsOverlay();
+    };
+    img.src = frameResult.frame;
+}
+
+function clearCanvas() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#f5f5f5';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    frameData = null;
+}
+
+function handleCanvasClick(e) {
+    if (!isDrawing) return;
+    
+    const rect = canvas.getBoundingClientRect();
+    const x = Math.round(e.clientX - rect.left);
+    const y = Math.round(e.clientY - rect.top);
+    
+    currentRegion.push([x, y]);
+    drawRegionsOverlay();
+    updateRegionStatus();
+}
+
+function drawRegionsOverlay() {
+    if (frameData) {
+        // Redraw the frame first
+        const img = new Image();
+        img.onload = function() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            drawRegions();
+        };
+        img.src = frameData.frame;
+    } else {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = '#f5f5f5';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        drawRegions();
+    }
+}
+
+function drawRegions() {
+    // Draw completed regions
+    regions.forEach((region, index) => {
+        ctx.strokeStyle = '#28a745';
+        ctx.fillStyle = 'rgba(40, 167, 69, 0.2)';
+        ctx.lineWidth = 3;
+        
+        if (region.length >= 3) {
+            ctx.beginPath();
+            ctx.moveTo(region[0][0], region[0][1]);
+            for (let i = 1; i < region.length; i++) {
+                ctx.lineTo(region[i][0], region[i][1]);
+            }
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+            
+            // Draw region label
+            const centerX = region.reduce((sum, point) => sum + point[0], 0) / region.length;
+            const centerY = region.reduce((sum, point) => sum + point[1], 0) / region.length;
+            
+            ctx.fillStyle = '#ffffff';
+            ctx.strokeStyle = '#28a745';
+            ctx.lineWidth = 2;
+            ctx.font = 'bold 14px Arial';
+            const regionLabel = regionNames[index] || `R${index + 1}`;
+            ctx.strokeText(regionLabel, centerX - 15, centerY + 5);
+            ctx.fillText(regionLabel, centerX - 15, centerY + 5);
+        }
+    });
+    
+    // Draw current region being drawn
+    if (currentRegion.length > 0) {
+        ctx.strokeStyle = '#007bff';
+        ctx.fillStyle = 'rgba(0, 123, 255, 0.2)';
+        ctx.lineWidth = 3;
+        
+        // Draw points
+        currentRegion.forEach((point, index) => {
+            ctx.beginPath();
+            ctx.arc(point[0], point[1], 6, 0, 2 * Math.PI);
+            ctx.fillStyle = '#007bff';
+            ctx.fill();
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            
+            // Draw point number
+            ctx.fillStyle = 'white';
+            ctx.font = 'bold 12px Arial';
+            ctx.fillText(index + 1, point[0] - 4, point[1] + 3);
+        });
+        
+        // Draw lines
+        if (currentRegion.length > 1) {
+            ctx.strokeStyle = '#007bff';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(currentRegion[0][0], currentRegion[0][1]);
+            for (let i = 1; i < currentRegion.length; i++) {
+                ctx.lineTo(currentRegion[i][0], currentRegion[i][1]);
+            }
+            ctx.stroke();
+        }
+        
+        // Draw preview line to complete polygon (if more than 2 points)
+        if (currentRegion.length > 2) {
+            ctx.setLineDash([8, 8]);
+            ctx.strokeStyle = '#007bff';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(currentRegion[currentRegion.length - 1][0], currentRegion[currentRegion.length - 1][1]);
+            ctx.lineTo(currentRegion[0][0], currentRegion[0][1]);
+            ctx.stroke();
+            ctx.setLineDash([]);
+        }
+    }
+}
+
+function drawCanvas() {
+    drawRegionsOverlay();
+}
+
+function startNewRegion() {
+    if (currentRegion.length > 0 && currentRegion.length >= 3) {
+        completeRegion();
+    } else if (currentRegion.length > 0) {
+        // Ask user if they want to complete the current incomplete region
+        if (confirm('You have an incomplete region. Do you want to complete it first?')) {
+            return;
+        }
+    }
+    currentRegion = [];
+    isDrawing = true;
+    updateRegionStatus();
+}
+
+function undoLastPoint() {
+    if (currentRegion.length > 0) {
+        currentRegion.pop();
+        drawRegionsOverlay();
+        updateRegionStatus();
+    }
+}
+
+function completeRegion() {
+    if (currentRegion.length >= 3) {
+        const regionName = document.getElementById('regionName').value.trim() || `Region ${regions.length + 1}`;
+        regions.push([...currentRegion]);
+        regionNames.push(regionName);
+        currentRegion = [];
+        isDrawing = false;
+        document.getElementById('regionName').value = '';
+        drawRegionsOverlay();
+        updateRegionStatus();
+        showStatus(`Region "${regionName}" created successfully!`, 'success');
+    } else {
+        showError('Need at least 3 points to create a region');
+    }
+}
+
+function clearRegions() {
+    if (regions.length > 0 || currentRegion.length > 0) {
+        if (confirm('Are you sure you want to clear all regions?')) {
+            regions = [];
+            regionNames = [];
+            currentRegion = [];
+            isDrawing = false;
+            document.getElementById('regionName').value = '';
+            drawRegionsOverlay();
+            updateRegionStatus();
+            showStatus('All regions cleared', 'info');
+        }
+    }
+}
+
+function updateRegionStatus() {
+    const status = document.getElementById('regionStatus');
+    let text = `📊 Completed Regions: ${regions.length}`;
+    
+    if (regions.length > 0) {
+        text += ` (${regionNames.join(', ')})`;
+    }
+    
+    if (isDrawing) {
+        text += ` | 🎯 Drawing: ${currentRegion.length} points`;
+        if (currentRegion.length >= 3) {
+            text += ' (Right-click or click Complete to finish)';
+        } else {
+            text += ' (Need 3+ points)';
+        }
+    }
+    
+    status.textContent = text;
+}
+
+async function processVideo() {
+    if (!videoFile || !currentVideoId) {
+        showError('Please select a video file first');
+        return;
+    }
+
+    const progressDiv = document.getElementById('progress');
+    const progressFill = document.getElementById('progressFill');
+    const status = document.getElementById('status');
+    const processBtn = document.getElementById('processBtn');
+    
+    // Reset UI
+    hideMessages();
+    progressDiv.style.display = 'block';
+    processBtn.disabled = true;
+    
+    // Real-time progress tracking
+    const progressInterval = setInterval(async () => {
+        try {
+            const response = await fetch(`/progress/${currentVideoId}`);
+            const progressData = await response.json();
+            
+            if (progressData.status === 'completed') {
+                clearInterval(progressInterval);
+                progressFill.style.width = '100%';
+                status.textContent = 'Processing complete! Redirecting to results...';
+                return;
+            } else if (progressData.status === 'error') {
+                clearInterval(progressInterval);
+                progressDiv.style.display = 'none';
+                processBtn.disabled = false;
+                throw new Error(progressData.error || 'Processing failed');
+            }
+            
+            const progress = progressData.progress || 0;
+            const eta = progressData.eta || 0;
+            
+            progressFill.style.width = progress + '%';
+            status.textContent = `Processing: ${progress.toFixed(1)}% | ETA: ${eta > 0 ? Math.round(eta) + 's' : 'Calculating...'}`;
+            
+        } catch (error) {
+            console.error('Progress check failed:', error);
+        }
+    }, 1000);
+
+    try {
+        const formData = new FormData();
+        formData.append('video_id', currentVideoId);
+        
+        // Add frame dimensions for proper scaling
+        if (frameData) {
+            formData.append('original_width', frameData.original_width);
+            formData.append('original_height', frameData.original_height);
+            formData.append('display_width', frameData.width);
+            formData.append('display_height', frameData.height);
+        }
+        
+        // Prepare regions with names
+        const regionsWithNames = regions.map((region, index) => ({
+            name: regionNames[index] || `Region ${index + 1}`,
+            points: region,
+            color: [0, 255, 0]  // Default green color
+        }));
+        formData.append('regions', JSON.stringify(regionsWithNames));
+
+        const response = await fetch('/process', {
+            method: 'POST',
+            body: formData
+        });
+
+        const result = await response.json();
+        
+        clearInterval(progressInterval);
+        progressFill.style.width = '100%';
+
+        if (result.success) {
+            status.textContent = 'Processing complete!';
+            setTimeout(() => {
+                window.location.href = `/results/${result.video_id}`;
+            }, 1500);
+        } else {
+            throw new Error(result.error || 'Processing failed');
+        }
+
+    } catch (error) {
+        clearInterval(progressInterval);
+        progressDiv.style.display = 'none';
+        showError('Processing failed: ' + error.message);
+        processBtn.disabled = false;
+    }
+}
+
+function showError(message) {
+    hideMessages();
+    const errorDiv = document.getElementById('error');
+    errorDiv.textContent = message;
+    errorDiv.style.display = 'block';
+}
+
+function showStatus(message, type = 'info') {
+    hideMessages();
+    if (type === 'success') {
+        const successDiv = document.getElementById('success');
+        successDiv.textContent = message;
+        successDiv.style.display = 'block';
+        setTimeout(() => successDiv.style.display = 'none', 3000);
+    } else {
+        console.log(message); // For info messages, just log them
+    }
+}
+
+function hideMessages() {
+    document.getElementById('error').style.display = 'none';
+    document.getElementById('success').style.display = 'none';
+}
+
+// Handle window resize
+window.addEventListener('resize', function() {
+    drawRegionsOverlay();
+});
+</script>
+</body>
+</html>

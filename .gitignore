@@ -1,0 +1,33 @@
+# Byte-compiled / cache
+__pycache__/
+*.py[cod]
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# OS / tooling
+.DS_Store
+.pytest_cache/
+.mypy_cache/
+.vscode/
+.idea/
+
+# Secrets
+.env
+
+# App runtime artifacts
+uploads/
+results/
+
+# Large media (safety net if added at root of app)
+*.mp4
+*.avi
+*.mov
+*.mkv
+*.csv
+
+# Keep model weights tracked (do NOT ignore .pt globally)
+# If you want to ignore other weight files, add them explicitly here.
+

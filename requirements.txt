@@ -1,0 +1,16 @@
+# Core web framework
+Flask>=3.0
+
+# Computer vision and ML
+ultralytics>=8.3.0
+opencv-python>=4.8.0
+numpy>=1.24.0
+mediapipe>=0.10.7
+
+# PyTorch (install a compatible build for your platform/GPU if this fails)
+torch>=2.1.0
+torchvision>=0.16.0
+
+# Image utilities
+Pillow>=10.0.0
+

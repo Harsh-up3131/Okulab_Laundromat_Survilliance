@@ -1,0 +1,642 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CCTV Analysis Results</title>
+<style>
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    min-height: 100vh;
+    padding: 20px;
+}
+
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.header {
+    background: white;
+    padding: 30px;
+    border-radius: 20px;
+    box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+    margin-bottom: 30px;
+    text-align: center;
+}
+
+h1 {
+    color: #333;
+    font-size: 2.5em;
+    background: linear-gradient(45deg, #667eea, #764ba2);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 10px;
+}
+
+.subtitle {
+    color: #666;
+    font-size: 1.1em;
+}
+
+.results-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 30px;
+    margin-bottom: 30px;
+}
+
+.result-card {
+    background: white;
+    padding: 25px;
+    border-radius: 20px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+}
+
+.result-card h2 {
+    color: #333;
+    margin-bottom: 20px;
+    font-size: 1.5em;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.video-section {
+    grid-column: 1 / -1;
+}
+
+.video-player {
+    width: 100%;
+    max-width: 800px;
+    height: auto;
+    border-radius: 15px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+    margin: 0 auto;
+    display: block;
+}
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 15px;
+    margin-bottom: 20px;
+}
+
+.stat-item {
+    text-align: center;
+    padding: 15px;
+    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+    border-radius: 15px;
+    color: white;
+}
+
+.stat-value {
+    font-size: 2em;
+    font-weight: bold;
+    display: block;
+}
+
+.stat-label {
+    font-size: 0.9em;
+    opacity: 0.9;
+}
+
+.pose-chart {
+    display: flex;
+    gap: 15px;
+    flex-wrap: wrap;
+    justify-content: space-around;
+    margin-bottom: 20px;
+}
+
+.pose-item {
+    text-align: center;
+    padding: 15px;
+    background: #f8f9fa;
+    border-radius: 15px;
+    border-left: 4px solid #007bff;
+    min-width: 120px;
+}
+
+.pose-count {
+    font-size: 1.8em;
+    font-weight: bold;
+    color: #007bff;
+}
+
+.pose-name {
+    font-size: 0.9em;
+    color: #666;
+    text-transform: capitalize;
+}
+
+.region-list {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.region-item {
+    padding: 15px;
+    background: #e8f5e8;
+    border-radius: 10px;
+    border-left: 4px solid #28a745;
+}
+
+.region-name {
+    font-weight: bold;
+    color: #28a745;
+    margin-bottom: 5px;
+}
+
+.region-stats {
+    display: flex;
+    gap: 20px;
+    font-size: 0.9em;
+    color: #666;
+}
+
+.download-section {
+    background: white;
+    padding: 25px;
+    border-radius: 20px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+    text-align: center;
+}
+
+.download-buttons {
+    display: flex;
+    gap: 20px;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-top: 20px;
+}
+
+.download-btn {
+    background: linear-gradient(45deg, #28a745, #20c997);
+    color: white;
+    padding: 15px 30px;
+    border: none;
+    border-radius: 50px;
+    font-size: 16px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.download-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+}
+
+.download-btn.secondary {
+    background: linear-gradient(45deg, #007bff, #0056b3);
+}
+
+.back-btn {
+    background: linear-gradient(45deg, #6c757d, #495057);
+    color: white;
+    padding: 12px 25px;
+    border: none;
+    border-radius: 50px;
+    font-size: 16px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 20px;
+}
+
+.back-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+}
+
+.error {
+    color: #dc3545;
+    background: #f8d7da;
+    padding: 15px;
+    border-radius: 10px;
+    margin: 20px 0;
+    border: 1px solid #f5c6cb;
+    text-align: center;
+}
+
+.loading {
+    text-align: center;
+    padding: 40px;
+    color: #666;
+    font-size: 1.1em;
+}
+
+.performance-info {
+    background: #f8f9fa;
+    padding: 15px;
+    border-radius: 10px;
+    margin-top: 15px;
+    font-size: 0.9em;
+    color: #666;
+}
+
+.performance-item {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 5px;
+}
+
+.no-data {
+    text-align: center;
+    color: #999;
+    font-style: italic;
+    padding: 20px;
+}
+
+@media (max-width: 768px) {
+    .results-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    
+    .pose-chart {
+        flex-direction: column;
+        align-items: center;
+    }
+    
+    .region-stats {
+        flex-direction: column;
+        gap: 5px;
+    }
+    
+    .download-buttons {
+        flex-direction: column;
+        align-items: center;
+    }
+    
+    h1 {
+        font-size: 2em;
+    }
+}
+</style>
+</head>
+<body>
+<div class="container">
+    <div class="header">
+        <h1>📊 Analysis Results</h1>
+        <p class="subtitle">Complete CCTV surveillance analysis with tracking and pose detection</p>
+    </div>
+    
+    <a href="/" class="back-btn">
+        ← Back to Analyzer
+    </a>
+    
+    <div id="loading" class="loading">
+        Loading analysis results...
+    </div>
+    
+    <div id="error" class="error" style="display: none;"></div>
+    
+    <div id="results" style="display: none;">
+        <div class="results-grid">
+            <!-- Video Section -->
+            <div class="result-card video-section">
+                <h2>🎥 Processed Video</h2>
+                <video id="processedVideo" class="video-player" controls>
+                    Your browser does not support the video tag.
+                </video>
+                <p style="text-align: center; margin-top: 15px; color: #666; font-size: 0.9em;">
+                    Video with person tracking, pose detection, and region analytics
+                </p>
+            </div>
+            
+            <!-- Tracking Summary -->
+            <div class="result-card">
+                <h2>🎯 Tracking Summary</h2>
+                <div class="stats-grid">
+                    <div class="stat-item">
+                        <span class="stat-value" id="totalPersons">0</span>
+                        <span class="stat-label">Total Persons</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-value" id="activeTrackers">0</span>
+                        <span class="stat-label">Active Trackers</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-value" id="avgConfidence">0%</span>
+                        <span class="stat-label">Avg Confidence</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-value" id="stableDetections">0</span>
+                        <span class="stat-label">Stable Detections</span>
+                    </div>
+                </div>
+                
+                <div class="performance-info">
+                    <h4>Performance Info</h4>
+                    <div class="performance-item">
+                        <span>Processing Time:</span>
+                        <span id="processingTime">-</span>
+                    </div>
+                    <div class="performance-item">
+                        <span>Processing FPS:</span>
+                        <span id="processingFPS">-</span>
+                    </div>
+                    <div class="performance-item">
+                        <span>GPU Used:</span>
+                        <span id="gpuUsed">-</span>
+                    </div>
+                    <div class="performance-item">
+                        <span>Model:</span>
+                        <span id="modelUsed">-</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Pose Statistics -->
+            <div class="result-card">
+                <h2>🏃 Pose Statistics</h2>
+                <div id="poseChart" class="pose-chart">
+                    <!-- Pose items will be added here -->
+                </div>
+                <div id="noPoseData" class="no-data" style="display: none;">
+                    No pose data available
+                </div>
+            </div>
+            
+            <!-- Region Analytics -->
+            <div class="result-card">
+                <h2>📊 Region Analytics</h2>
+                <div id="regionList" class="region-list">
+                    <!-- Region items will be added here -->
+                </div>
+                <div id="noRegionData" class="no-data" style="display: none;">
+                    No regions defined
+                </div>
+            </div>
+            
+            <!-- Coin Insertion Analytics -->
+            <div class="result-card">
+                <h2>🪙 Coin Insertion Analytics</h2>
+                <div class="stats-grid">
+                    <div class="stat-item">
+                        <span class="stat-value" id="totalCoins">0</span>
+                        <span class="stat-label">Total Coins</span>
+                    </div>
+                </div>
+                <div id="coinList" class="region-list">
+                    <!-- Coin insertion items will be added here -->
+                </div>
+                <div id="noCoinData" class="no-data" style="display: none;">
+                    No coin insertions detected
+                </div>
+            </div>
+        </div>
+        
+        <!-- Download Section -->
+        <div class="download-section">
+            <h2>📥 Download Results</h2>
+            <p style="color: #666; margin-bottom: 20px;">
+                Download the processed video and detailed analytics report
+            </p>
+            <div class="download-buttons">
+                <a id="downloadVideo" class="download-btn" href="#" download>
+                    📹 Download Video
+                </a>
+                <a id="downloadCSV" class="download-btn secondary" href="#" download>
+                    📊 Download CSV Report
+                </a>
+                <a id="downloadCoinCSV" class="download-btn secondary" href="#" download>
+                    🪙 Download Coin Report
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+const videoId = window.location.pathname.split('/').pop();
+
+document.addEventListener('DOMContentLoaded', function() {
+    loadResults();
+});
+
+async function loadResults() {
+    try {
+        const response = await fetch(`/get_results/${videoId}`);
+        const data = await response.json();
+        
+        if (data.error) {
+            showError(data.error);
+            return;
+        }
+        
+        displayResults(data);
+        
+    } catch (error) {
+        console.error('Error loading results:', error);
+        showError('Failed to load results: ' + error.message);
+    }
+}
+
+function displayResults(data) {
+    const loadingDiv = document.getElementById('loading');
+    const resultsDiv = document.getElementById('results');
+    
+    loadingDiv.style.display = 'none';
+    resultsDiv.style.display = 'block';
+    
+    // Set up video
+    const video = document.getElementById('processedVideo');
+    video.src = `/video/${videoId}`;
+    
+    // Display tracking summary
+    const tracking = data.tracking_summary || {};
+    document.getElementById('totalPersons').textContent = tracking.total_persons_detected || 0;
+    document.getElementById('activeTrackers').textContent = tracking.active_trackers || 0;
+    document.getElementById('avgConfidence').textContent = 
+        (tracking.average_confidence ? (tracking.average_confidence * 100).toFixed(1) + '%' : '0%');
+    document.getElementById('stableDetections').textContent = tracking.stable_detections || 0;
+    
+    // Display performance info
+    const videoInfo = data.video_info || {};
+    const performance = data.performance || {};
+    
+    document.getElementById('processingTime').textContent = 
+        videoInfo.processing_time ? formatTime(videoInfo.processing_time) : '-';
+    document.getElementById('processingFPS').textContent = 
+        videoInfo.processing_fps ? videoInfo.processing_fps.toFixed(1) + ' FPS' : '-';
+    document.getElementById('gpuUsed').textContent = performance.gpu_used ? 'Yes' : 'No';
+    document.getElementById('modelUsed').textContent = performance.model_used || '-';
+    
+    // Display pose statistics
+    displayPoseStats(data.pose_statistics || {});
+    
+    // Display region analytics
+    displayRegionAnalytics(data.region_analytics || {});
+
+    // Display coin insertion statistics
+    displayCoinStats(data.coin_insertions || {});
+    
+    // Set up download links
+    setupDownloadLinks();
+}
+
+function displayPoseStats(poseStats) {
+    const poseChart = document.getElementById('poseChart');
+    const noPoseData = document.getElementById('noPoseData');
+    
+    const poses = Object.keys(poseStats);
+    
+    if (poses.length === 0) {
+        poseChart.style.display = 'none';
+        noPoseData.style.display = 'block';
+        return;
+    }
+    
+    noPoseData.style.display = 'none';
+    poseChart.innerHTML = '';
+    
+    const poseEmojis = {
+        'walking': '🚶',
+        'standing': '🧍',
+        'sitting': '🪑'
+    };
+    
+    poses.forEach(pose => {
+        const count = poseStats[pose];
+        const poseItem = document.createElement('div');
+        poseItem.className = 'pose-item';
+        poseItem.innerHTML = `
+            <div class="pose-count">${poseEmojis[pose] || '👤'} ${count}</div>
+            <div class="pose-name">${pose}</div>
+        `;
+        poseChart.appendChild(poseItem);
+    });
+}
+
+function displayRegionAnalytics(regionAnalytics) {
+    const regionList = document.getElementById('regionList');
+    const noRegionData = document.getElementById('noRegionData');
+    
+    const regions = Object.keys(regionAnalytics);
+    
+    if (regions.length === 0) {
+        regionList.style.display = 'none';
+        noRegionData.style.display = 'block';
+        return;
+    }
+    
+    noRegionData.style.display = 'none';
+    regionList.innerHTML = '';
+    
+    regions.forEach(regionId => {
+        const region = regionAnalytics[regionId];
+        const regionItem = document.createElement('div');
+        regionItem.className = 'region-item';
+        regionItem.innerHTML = `
+            <div class="region-name">📍 ${region.name}</div>
+            <div class="region-stats">
+                <div>↗️ Entries: ${region.entries || 0}</div>
+                <div>↙️ Exits: ${region.exits || 0}</div>
+                <div>👥 Max Occupancy: ${region.max_occupancy || 0}</div>
+            </div>
+        `;
+        regionList.appendChild(regionItem);
+    });
+}
+
+function displayCoinStats(coinStats) {
+    const totalCoins = document.getElementById('totalCoins');
+    const coinList = document.getElementById('coinList');
+    const noCoinData = document.getElementById('noCoinData');
+
+    totalCoins.textContent = coinStats.total_coins || 0;
+
+    coinList.innerHTML = '';
+    const events = coinStats.events || [];
+
+    if (events.length === 0) {
+        coinList.style.display = 'none';
+        noCoinData.style.display = 'block';
+        return;
+    }
+
+    noCoinData.style.display = 'none';
+    
+    // Display recent coin insertions (last 10)
+    const recentEvents = events.slice(-10);
+    recentEvents.forEach(event => {
+        const coinItem = document.createElement('div');
+        coinItem.className = 'region-item';
+        coinItem.innerHTML = `
+            <div class="region-name">🪙 Person ${event.person_id} in ${event.region_name}</div>
+            <div class="region-stats">
+                <div>⏰ Time: ${event.time_formatted}</div>
+                <div>⏱️ Duration: ${event.duration}s</div>
+            </div>
+        `;
+        coinList.appendChild(coinItem);
+    });
+}
+
+function setupDownloadLinks() {
+    const downloadVideo = document.getElementById('downloadVideo');
+    const downloadCSV = document.getElementById('downloadCSV');
+    const downloadCoinCSV = document.getElementById('downloadCoinCSV');
+    
+    downloadVideo.href = `/download/processed_${videoId}.mp4`;
+    downloadVideo.addEventListener('click', function(e) {
+        // Try .avi if .mp4 doesn't work
+        if (!downloadVideo.href.includes('.avi')) {
+            setTimeout(() => {
+                downloadVideo.href = `/download/processed_${videoId}.avi`;
+            }, 1000);
+        }
+    });
+    
+    downloadCSV.href = `/download/person_logs_${videoId}.csv`;
+    downloadCoinCSV.href = `/download/coin_insertions_${videoId}.csv`;
+}
+
+function formatTime(seconds) {
+    if (seconds < 60) {
+        return seconds.toFixed(1) + 's';
+    } else if (seconds < 3600) {
+        const minutes = Math.floor(seconds / 60);
+        const remainingSeconds = (seconds % 60).toFixed(0);
+        return `${minutes}m ${remainingSeconds}s`;
+    } else {
+        const hours = Math.floor(seconds / 3600);
+        const minutes = Math.floor((seconds % 3600) / 60);
+        return `${hours}h ${minutes}m`;
+    }
+}
+
+function showError(message) {
+    const loadingDiv = document.getElementById('loading');
+    const errorDiv = document.getElementById('error');
+    
+    loadingDiv.style.display = 'none';
+    errorDiv.textContent = message;
+    errorDiv.style.display = 'block';
+}
+</script>
+</body>
+</html>
