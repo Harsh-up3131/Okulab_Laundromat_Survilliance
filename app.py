@@ -862,8 +862,13 @@ class EnhancedCCTVProcessor:
             self.set_regions(regions, original_width, original_height, display_width, display_height)
         
         # Video writer setup with better codec handling
-        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        # Prefer H.264 (avc1) for browser compatibility, then fallback to mp4v, then avi/XVID
+        fourcc = cv2.VideoWriter_fourcc(*'avc1')
         out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
+        
+        if not out.isOpened():
+            fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+            out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
         
         if not out.isOpened():
             fourcc = cv2.VideoWriter_fourcc(*'XVID')
@@ -1386,7 +1391,7 @@ def download_file(filename):
 
 @app.route('/video/<video_id>')
 def serve_video(video_id):
-    """Serve video for streaming playback"""
+    """Serve video for streaming playback with HTTP Range support"""
     filename = f"processed_{video_id}.mp4"
     file_path = os.path.join(app.config['RESULTS_FOLDER'], filename)
     
@@ -1398,16 +1403,58 @@ def serve_video(video_id):
     if not os.path.exists(file_path):
         return "File not found", 404
 
-    def generate():
-        with open(file_path, 'rb') as f:
-            data = f.read(1024)
-            while data:
-                yield data
-                data = f.read(1024)
+    file_size = os.path.getsize(file_path)
+    range_header = request.headers.get('Range', None)
+    mime = 'video/mp4' if filename.endswith('.mp4') else 'video/x-msvideo'
 
-    return Response(generate(), 
-                   mimetype='video/mp4' if filename.endswith('.mp4') else 'video/avi',
-                   headers={'Content-Disposition': f'inline; filename={filename}'})
+    if range_header:
+        # Parse Range: bytes=start-end
+        try:
+            range_value = range_header.strip().split('=')[1]
+            start_str, end_str = (range_value.split('-') + [''])[:2]
+            start = int(start_str) if start_str else 0
+            end = int(end_str) if end_str else file_size - 1
+            start = max(0, start)
+            end = min(end, file_size - 1)
+            length = end - start + 1
+        except Exception:
+            # Malformed Range; return entire file
+            start, end = 0, file_size - 1
+            length = file_size
+        
+        def generate():
+            with open(file_path, 'rb') as f:
+                f.seek(start)
+                remaining = length
+                chunk_size = 1024 * 64
+                while remaining > 0:
+                    read_len = min(chunk_size, remaining)
+                    data = f.read(read_len)
+                    if not data:
+                        break
+                    remaining -= len(data)
+                    yield data
+        
+        rv = Response(generate(), status=206, mimetype=mime, direct_passthrough=True)
+        rv.headers.add('Content-Range', f'bytes {start}-{end}/{file_size}')
+        rv.headers.add('Accept-Ranges', 'bytes')
+        rv.headers.add('Content-Length', str(length))
+        rv.headers.add('Content-Disposition', f'inline; filename={filename}')
+        return rv
+
+    # No Range header: stream whole file
+    def generate_full():
+        with open(file_path, 'rb') as f:
+            chunk = f.read(1024 * 64)
+            while chunk:
+                yield chunk
+                chunk = f.read(1024 * 64)
+
+    rv = Response(generate_full(), mimetype=mime)
+    rv.headers.add('Accept-Ranges', 'bytes')
+    rv.headers.add('Content-Length', str(file_size))
+    rv.headers.add('Content-Disposition', f'inline; filename={filename}')
+    return rv
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
